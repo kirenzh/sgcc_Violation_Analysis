@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>智能助手</title>
+  <title>违章分析智能助手</title>
   <style>
     * {
       margin: 0;
@@ -95,18 +95,12 @@
 </div>
 
 <script>
-// ============ 在这里填入你的信息 ============
-const HOST = "https://poweragents.agentspro.cn";
-const UUID = "8f3408d12c314e38848242a0825a382b";
-const AUTH_KEY = "8f3408d12c314e38848242a0825a382b";
-const AUTH_SECRET = "z8TXLMTEy0rKBzTEiFiTmlQUroadIrg8";
-// ============================================
+const API_PROXY = "/api/proxy";
 
 const chatBox = document.getElementById("chatBox");
 const inputEl = document.getElementById("query-input");
 const sendBtn = document.getElementById("send-btn");
 
-// 渲染消息
 function addMsg(content, isUser) {
   const wrap = document.createElement("div");
   wrap.className = isUser ? "message user-box" : "message agent-box";
@@ -116,7 +110,6 @@ function addMsg(content, isUser) {
   return wrap.querySelector("div");
 }
 
-// 发送对话
 async function sendMessage() {
   const text = inputEl.value.trim();
   if (!text) return;
@@ -125,44 +118,38 @@ async function sendMessage() {
   const replyDom = addMsg("", false);
   let fullText = "";
 
-  // 拼装请求地址，带上鉴权参数
-  const params = new URLSearchParams({
-    uuid: UUID,
-    auth_key: AUTH_KEY,
-    auth_secret: AUTH_SECRET,
-    query: text
-  });
-
-  const resp = await fetch(`${HOST}/stream?${params.toString()}`, {
-    method: "GET",
-    headers: {
-      "Accept": "text/event-stream"
+  try {
+    const resp = await fetch(`${API_PROXY}?query=${encodeURIComponent(text)}`);
+    if (!resp.ok) {
+      replyDom.innerText = "服务异常";
+      return;
     }
-  });
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const chunk = decoder.decode(value);
-    const lines = chunk.split("\n");
-    for (const line of lines) {
-      if (line.startsWith("data: ") && line !== "data: [DONE]") {
-        fullText += line.replace("data: ", "");
-        replyDom.innerText = fullText;
-        chatBox.scrollTop = chatBox.scrollHeight;
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith("data:")) {
+          let data = line.replace("data:", "").trim();
+          if (data === "[DONE]") continue;
+          fullText += data;
+          replyDom.innerText = fullText;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
       }
     }
+  } catch (e) {
+    replyDom.innerText = "请求失败";
   }
 }
 
 sendBtn.onclick = sendMessage;
-// 回车发送
-inputEl.onkeydown = e => {
-  if (e.key === "Enter") sendMessage();
-};
+inputEl.onkeydown = e => e.key === "Enter" && sendMessage();
 </script>
 </body>
 </html>
